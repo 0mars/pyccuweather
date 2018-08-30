@@ -550,7 +550,7 @@ class HourlyForecasts(object):
         self.raw = json
 
     def __str__(self):
-        return "<Hourly forecasts from %s>" % self.forecasts[0]
+        return "<Hourly forecasts from %s>" % self.forecasts.keys()
 
     __repr__ = __str__
 

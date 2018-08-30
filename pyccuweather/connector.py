@@ -24,33 +24,35 @@ class Connection(object):
     :param API_KEY: API key
     :param dev: whether the dev mode api (apidev.accuweather.com) or the production api (api.accuweather.com) is used
     :param retry: number of retries of failed operations - TODO: implement
+    :param api_type: override the subdomain of .accuweather.com
+    :param timeout: request timeout
     :raise errors.MalformattedAPIKeyError: if the API key is not a 32-character string, an error is thrown
     """
 
-    def __init__(self, API_KEY: str=None, dev: bool=True, retry: int=3, timeout=None):
+    def __init__(self, API_KEY: str=None, dev: bool=True, retry: int=3, api_type: str=None, timeout=None):
 
         # TODO: implement retries
 
-        if API_KEY is None:
-            try:
-                self.API_KEY = os.environ["ACCUWEATHER_APIKEY"]
-            except KeyError:
-                raise errors.NoAPIKeyProvided()
-
-        else:
-            self.API_KEY = API_KEY
-
         try:
-            assert isinstance(self.API_KEY, str)
-            assert len(self.API_KEY) is 32
-        except AssertionError:
-            raise errors.MalformattedAPIKeyError()
+            self.API_KEY = os.environ["ACCUWEATHER_APIKEY"]
+        except KeyError:
+            try:
+                assert isinstance(API_KEY, str)
+                assert len(API_KEY) is 32
+                self.API_KEY = API_KEY
+            except AssertionError:
+                raise errors.MalformattedAPIKeyError()
 
-        self.API_ROOT = "http://apidev.accuweather.com" if dev is True else "http://api.accuweather.com"
+        if api_type:
+            self.api_type = api_type
+        else:
+            self.api_type = 'apidev' if dev is True else 'api'
+            
+        self.API_ROOT = "http://{0}.accuweather.com".format(self.api_type)
         self.API_VERSION = "v1"
         self.retries = retry
         self.timeout = timeout
-
+        
     def __str__(self):
         return u"Accuweather connector to {0:s}".format(self.API_ROOT)
 
@@ -87,8 +89,8 @@ class Connection(object):
         payload = {"q": u"{0:.4f},{1:.4f}".format(lat, lon),
                    "apikey": self.API_KEY}
 
-        resp = requests.get(url=froot("loc_geoposition"),
-                            params=payload).json()
+        resp = requests.get(url=froot("loc_geoposition", api_type=self.api_type),
+                            params=payload, timeout=self.timeout).json()
 
         assert len(resp) > 0
 
@@ -112,12 +114,12 @@ class Connection(object):
             except:
                 raise errors.InvalidCountryCodeError(country_code)
 
-            url = froot("loc_search_country", country_code=country_code)
+            url = froot("loc_search_country", country_code=country_code, api_type=self.api_type)
             payload = {"q": search_string,
                        "apikey": self.API_KEY}
 
         else:
-            url = froot("loc_search")
+            url = froot("loc_search", api_type=self.api_type)
             payload = {"q": search_string,
                        "apikey": self.API_KEY}
 
@@ -159,7 +161,7 @@ class Connection(object):
         except:
             raise errors.InvalidCountryCodeError(country_code)
 
-        url = froot("loc_postcode", country_code=country_code)
+        url = froot("loc_postcode", country_code=country_code, api_type=self.api_type)
         payload = {"q": postcode,
                    "apikey": self.API_KEY}
 
@@ -181,7 +183,7 @@ class Connection(object):
         :return: Location object
         """
 
-        url = froot("loc_ip_address")
+        url = froot("loc_ip_address", api_type=self.api_type)
         payload = {"q": ip_address,
                    "apikey": self.API_KEY}
 
@@ -195,6 +197,10 @@ class Connection(object):
         elif isinstance(resp, dict):
             return Location(resp)
 
+    def validate_response(self, response):
+        if response['Code'] == 'Unauthorized':
+            raise ValueError(str(response))
+        
     def loc_lkey(self, lkey:int):
         """
         Resolves location by Accuweather location key.
@@ -205,14 +211,15 @@ class Connection(object):
 
         assert isinstance(lkey, int)
 
-        url = froot("loc_lkey", location_key=lkey)
+        url = froot("loc_lkey", location_key=lkey, api_type=self.api_type)
         payload = {"apikey": self.API_KEY}
-
+        print(payload)
+        print(url)
         resp = requests.get(url=url,
                             params=payload, timeout=self.timeout).json()
 
         assert len(resp) > 0
-
+        
         if isinstance(resp, list):
             return Location(resp[0])
         elif isinstance(resp, dict):
@@ -236,9 +243,9 @@ class Connection(object):
         assert current in [0, 6, 24]
         assert lkey is not None or location is not None
         if current is 0:
-            url = froot("currentconditions", location_key=lkey)
+            url = froot("currentconditions", location_key=lkey, api_type=self.api_type)
         else:
-            url = froot("currentconditions_{current}".format(current=current), location_key=lkey)
+            url = froot("currentconditions_{current}".format(current=current, api_type=self.api_type), location_key=lkey)
 
         payload = {"apikey": self.API_KEY,
                    "details": "true" if details is True else "false"}
@@ -259,7 +266,7 @@ class Connection(object):
 
         fkeyid = u"forecast_{0:s}".format(forecast_type)
 
-        url = froot(fkeyid, location_key=lkey)
+        url = froot(fkeyid, location_key=lkey, api_type=self.api_type)
         payload = {"apikey": self.API_KEY,
                    "details": "true" if details == True else "false",
                    "metric": "true" if metric == True else "false"}
@@ -284,7 +291,7 @@ class Connection(object):
         else:
             fkeyid = "airquality_yesterday"
 
-        url = froot(fkeyid, location_key=lkey)
+        url = froot(fkeyid, location_key=lkey, api_type=self.api_type)
         payload = {"apikey": self.API_KEY}
 
         return requests.get(url=url,
@@ -301,7 +308,7 @@ class Connection(object):
 
         if end_date:
             fkeyid = "climo_actuals_range"
-            url = froot(fkeyid, location_key=lkey)
+            url = froot(fkeyid, location_key=lkey, api_type=self.api_type)
             payload = {"apikey": self.API_KEY,
                        "start": start_date,
                        "end": end_date}
@@ -309,7 +316,7 @@ class Connection(object):
             fkeyid = "climo_actuals_date"
             url = froot(fkeyid,
                         date=start_date,
-                        location_key=lkey)
+                        location_key=lkey, api_type=self.api_type)
             payload = {"apikey": self.API_KEY}
 
         return requests.get(url=url,
@@ -322,7 +329,7 @@ class Connection(object):
 
         if end_date:
             fkeyid = "climo_records_range"
-            url = froot(fkeyid, location_key=lkey)
+            url = froot(fkeyid, location_key=lkey, api_type=self.api_type)
             payload = {"apikey": self.API_KEY,
                        "start": start_date,
                        "end": end_date}
@@ -330,7 +337,7 @@ class Connection(object):
             fkeyid = "climo_records_date"
             url = froot(fkeyid,
                         date=start_date,
-                        location_key=lkey)
+                        location_key=lkey, api_type=self.api_type)
             payload = {"apikey": self.API_KEY}
 
         return requests.get(url=url,
@@ -343,7 +350,7 @@ class Connection(object):
 
         if end_date:
             fkeyid = "climo_normals_range"
-            url = froot(fkeyid, location_key=lkey)
+            url = froot(fkeyid, location_key=lkey, api_type=self.api_type)
             payload = {"apikey": self.API_KEY,
                        "start": start_date,
                        "end": end_date}
@@ -351,7 +358,7 @@ class Connection(object):
             fkeyid = "climo_normals_date"
             url = froot(fkeyid,
                         date=start_date,
-                        location_key=lkey)
+                        location_key=lkey, api_type=self.api_type)
             payload = {"apikey": self.API_KEY}
 
         return requests.get(url=url,
@@ -368,7 +375,7 @@ class Connection(object):
 
         assert isinstance(forecast_range, int)
         fkeyid = u"alarms_{0:d}d".format(forecast_range)
-        url = froot(fkeyid, location_key=lkey)
+        url = froot(fkeyid, location_key=lkey, api_type=self.api_type)
         payload = {"apikey": self.API_KEY}
 
         return requests.get(url=url,

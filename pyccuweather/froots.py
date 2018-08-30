@@ -24,7 +24,7 @@ FROOTS = {"loc_geoposition": "locations/v{version:d}/cities/geoposition/search.j
           "minutecast_latlon": "forecasts/v{version:d}/minute.json",
           "forecast_1h": "forecasts/v{version:d}/hourly/1hour/{location_key}.json",
           "forecast_12h": "forecasts/v{version:d}/hourly/12hour/{location_key}.json",
-          "forecast_24h": "forecasts/v{version:d}/hourly/24hour/{location_key}.json",
+          "forecast_24h": "forecasts/v{version:d}/hourly/24hour/{location_key}",
           "forecast_72h": "forecasts/v{version:d}/hourly/72hour/{location_key}.json",
           "forecast_120h": "forecasts/v{version:d}/hourly/120hour/{location_key}.json",
           "forecast_240h": "forecasts/v{version:d}/hourly/240hour/{location_key}.json",
@@ -67,7 +67,7 @@ def froot(arg, **kwargs):
     try:
         assert "api_type" in kwargs.keys()
     except AssertionError:
-        kwargs["api_type"] = "apidev"
+        kwargs["api_type"] = "dataservice"
 
     try:
         assert "version" in kwargs.keys()
@@ -75,4 +75,5 @@ def froot(arg, **kwargs):
         kwargs["version"] = 1
 
     froot_string = ENDPOINT + FROOTS[arg]
+    print(froot_string.format(**kwargs))
     return froot_string.format(**kwargs)
